@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Seguimiento de Dotación 2026 · Comfenalco Cartagena</title>
-<meta name="version" content="v36">
+<meta name="version" content="v37">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -2455,7 +2455,9 @@ fileInput.onchange=e=>{if(e.target.files[0])handleFile(e.target.files[0]);};
 function norm(s){return (s==null?'':String(s)).trim().toLowerCase().replace(/\s+/g,' ');}
 function base(s){return norm(s).replace(/\d+$/,'').trim();}
 
-function handleFile(file){
+function handleFile(file, options){
+  const opts=options||{};
+  const automatic=!!opts.automatic;
   const rd=new FileReader();
   rd.onload=ev=>{
     try{
@@ -2471,7 +2473,7 @@ function handleFile(file){
       const huboPrevia = STATE.rows && STATE.rows.length>0;
       const antes = huboPrevia ? resumenEstado(STATE.rows) : null;
       const filasPrevias = huboPrevia ? clone(STATE.rows) : [];
-      if(huboPrevia){
+      if(huboPrevia && !automatic){
         saveSnapshot('Versión archivada · '+sello+' (corte '+STATE.corte+')', STATE.rows, STATE.corte);
         registrarLog('ARCHIVO','Versión anterior archivada automáticamente',
           antes ? `Estado previo: ejec. total ${fmt(antes.ejecTotal)} · ${antes.activos} activos.` : '', antes);
@@ -2501,8 +2503,12 @@ function handleFile(file){
           `${cl.nuevos.length} activo(s) incorporado(s), ${cl.modificados.length} con valor modificado, ${cl.retirados.length} retirado(s).`,
           despues);
       }
-      if(huboPrevia) mostrarResumenCambios(cambios, file.name||'archivo', antes, despues, parsed.actualizarLMI?parsed.cambiosLMI:null);
-      toast(`Nueva plantilla cargada · ${parsed.actualizados} activo(s) con ejecución${parsed.nuevos?` · ${parsed.nuevos} fuera de presupuesto`:''}.${huboPrevia?' La versión anterior quedó archivada en Históricos.':''}`);
+      if(huboPrevia && !automatic) mostrarResumenCambios(cambios, file.name||'archivo', antes, despues, parsed.actualizarLMI?parsed.cambiosLMI:null);
+      if(automatic){
+        toast(`Información actualizada automáticamente · ${parsed.actualizados} activo(s) con ejecución${parsed.nuevos?` · ${parsed.nuevos} fuera de presupuesto`:''}.`);
+      }else{
+        toast(`Nueva plantilla cargada · ${parsed.actualizados} activo(s) con ejecución${parsed.nuevos?` · ${parsed.nuevos} fuera de presupuesto`:''}.${huboPrevia?' La versión anterior quedó archivada en Históricos.':''}`);
+      }
     }catch(err){
       console.error(err);
       if(err && err.validacion){
@@ -2519,6 +2525,27 @@ function handleFile(file){
     }
   };
   rd.readAsArrayBuffer(file);
+}
+
+/* Carga automáticamente la plantilla publicada junto al dashboard.
+   La marca de tiempo y cache:'no-store' evitan conservar una versión anterior. */
+function cargarPlantillaAutomatica(){
+  const nombre='Plantilla_Ejecucion_Dotacion_2026_Nva.xlsx';
+  const url='./'+encodeURIComponent(nombre)+'?actualizacion='+Date.now();
+  fetch(url,{cache:'no-store'})
+    .then(res=>{
+      if(!res.ok) throw new Error('HTTP '+res.status);
+      return res.blob();
+    })
+    .then(blob=>{
+      const file=new File([blob],nombre,{type:blob.type||'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+      handleFile(file,{automatic:true});
+    })
+    .catch(err=>{
+      console.error('Carga automática de plantilla',err);
+      registrarLog('VALIDACION','No se pudo cargar la plantilla automática',String(err&&err.message||err));
+      toast('No se pudo actualizar automáticamente la información. Se muestran los datos disponibles.',true);
+    });
 }
 
 /* Muestra el detalle de los errores de validación dentro del modal de carga */
@@ -3588,6 +3615,7 @@ function descargarLog(){
 /* ====== INIT ====== */
 renderAll();
 registrarLog('CARGA','Apertura de la herramienta','Información cargada al abrir · última actualización registrada: '+(STATE.actualizado||STATE.corte), resumenEstado(STATE.rows));
+cargarPlantillaAutomatica();
 
 
 
