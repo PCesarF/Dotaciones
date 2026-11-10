@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Seguimiento de Dotación 2026 · Comfenalco Cartagena</title>
-<meta name="version" content="v37">
+<meta name="version" content="v38">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -2531,20 +2531,57 @@ function handleFile(file, options){
    La marca de tiempo y cache:'no-store' evitan conservar una versión anterior. */
 function cargarPlantillaAutomatica(){
   const nombre='Plantilla_Ejecucion_Dotacion_2026_Nva.xlsx';
-  const url='./'+encodeURIComponent(nombre)+'?actualizacion='+Date.now();
-  fetch(url,{cache:'no-store'})
+  const endpointDrive='https://script.google.com/macros/s/AKfycbzevpwRXZKN0BrXiZov68gnYM_xtbUOAqgsq4sBusDc9COc9xdkerNpF9xh55nfhLy3/exec';
+
+  function base64AB64(base64){
+    const bin=atob(base64);
+    const bytes=new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+    return bytes;
+  }
+
+  function aplicarBlob(blob,origen,ultimaModificacion){
+    const file=new File([blob],nombre,{type:blob.type||'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    handleFile(file,{automatic:true});
+    const cf=document.getElementById('corteDatos');
+    if(cf){
+      const fecha=ultimaModificacion ? new Date(ultimaModificacion).toLocaleString('es-CO',{timeZone:'America/Bogota'}) : new Date().toLocaleString('es-CO',{timeZone:'America/Bogota'});
+      cf.textContent='Fuente: '+origen+' · actualización '+fecha;
+    }
+  }
+
+  function cargarRespaldoGitHub(errorDrive){
+    console.warn('No se pudo leer Drive; se usa respaldo local.',errorDrive);
+    const url='./'+encodeURIComponent(nombre)+'?actualizacion='+Date.now();
+    return fetch(url,{cache:'no-store'})
+      .then(res=>{
+        if(!res.ok) throw new Error('HTTP '+res.status);
+        return res.blob();
+      })
+      .then(blob=>{
+        aplicarBlob(blob,'respaldo GitHub',null);
+        toast('No se pudo consultar Drive. Se cargó la última copia disponible en GitHub.',true);
+      });
+  }
+
+  fetch(endpointDrive+'?t='+Date.now(),{cache:'no-store',redirect:'follow'})
     .then(res=>{
-      if(!res.ok) throw new Error('HTTP '+res.status);
-      return res.blob();
+      if(!res.ok) throw new Error('Apps Script HTTP '+res.status);
+      return res.json();
     })
-    .then(blob=>{
-      const file=new File([blob],nombre,{type:blob.type||'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-      handleFile(file,{automatic:true});
+    .then(data=>{
+      if(!data || !data.ok || !data.base64) throw new Error((data&&data.error)||'Respuesta inválida del servicio de Drive');
+      const bytes=base64AB64(data.base64);
+      const blob=new Blob([bytes],{type:data.mimeType||'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+      aplicarBlob(blob,'Google Drive',data.ultimaModificacion||null);
+      toast('Información actualizada automáticamente desde Google Drive.');
     })
     .catch(err=>{
-      console.error('Carga automática de plantilla',err);
-      registrarLog('VALIDACION','No se pudo cargar la plantilla automática',String(err&&err.message||err));
-      toast('No se pudo actualizar automáticamente la información. Se muestran los datos disponibles.',true);
+      cargarRespaldoGitHub(err).catch(err2=>{
+        console.error('Carga automática de plantilla',err2);
+        registrarLog('VALIDACION','No se pudo cargar la plantilla automática',String(err2&&err2.message||err2));
+        toast('No se pudo actualizar automáticamente la información. Se muestran los datos disponibles.',true);
+      });
     });
 }
 
