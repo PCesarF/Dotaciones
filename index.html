@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Seguimiento de Dotación 2026 · Comfenalco Cartagena</title>
-<meta name="version" content="v42">
+<meta name="version" content="v43">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -2539,7 +2539,6 @@ function cargarPlantillaAutomatica(){
     for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
     return bytes;
   }
-
   function marcarEstado(texto,esError){
     const cf=document.getElementById('corteDatos');
     if(cf){
@@ -2548,21 +2547,26 @@ function cargarPlantillaAutomatica(){
     }
   }
 
-  const callback='cargarDrive_'+Date.now();
-  const script=document.createElement('script');
   let terminado=false;
+  const iframe=document.createElement('iframe');
+  iframe.style.display='none';
+  iframe.setAttribute('aria-hidden','true');
 
   function limpiar(){
     if(terminado) return;
     terminado=true;
-    try{ delete window[callback]; }catch(e){}
-    if(script.parentNode) script.parentNode.removeChild(script);
+    window.removeEventListener('message',onDriveMessage);
+    if(iframe.parentNode) iframe.parentNode.removeChild(iframe);
   }
 
-  window[callback]=function(data){
+  function onDriveMessage(ev){
+    const data=ev.data;
+    if(!data || data.tipo!=='DOTACIONES_DRIVE_BRIDGE') return;
+    if(ev.origin!=='https://script.google.com' && !/\.googleusercontent\.com$/.test(new URL(ev.origin).hostname)) return;
+
     try{
-      if(!data || data.ok!==true) throw new Error((data&&data.error)||'El servicio de Drive respondió con error');
-      if(!data.base64) throw new Error('La respuesta del servicio no contiene el archivo Excel');
+      if(data.ok!==true) throw new Error(data.error||'El servicio de Drive respondió con error');
+      if(!data.base64) throw new Error('La respuesta no contiene el archivo Excel');
 
       const bytes=base64ABytes(data.base64);
       const blob=new Blob([bytes],{type:data.mimeType||'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
@@ -2583,28 +2587,20 @@ function cargarPlantillaAutomatica(){
     }finally{
       limpiar();
     }
-  };
+  }
 
-  script.onerror=function(){
-    limpiar();
-    STATE.rows=[];
-    renderAll();
-    marcarEstado('ERROR: no se pudo conectar con Google Drive mediante JSONP',true);
-    registrarLog('VALIDACION','Fallo de conexión JSONP con Google Drive','No se pudo cargar el endpoint de Apps Script');
-    toast('No se pudo conectar con Google Drive.',true);
-  };
-
+  window.addEventListener('message',onDriveMessage);
   marcarEstado('Fuente: Google Drive · consultando información actualizada…',false);
-  script.src=endpointDrive+'?callback='+encodeURIComponent(callback)+'&t='+Date.now();
-  document.head.appendChild(script);
+  iframe.src=endpointDrive+'?bridge=1&t='+Date.now();
+  document.body.appendChild(iframe);
 
   setTimeout(function(){
     if(!terminado){
       limpiar();
       STATE.rows=[];
       renderAll();
-      marcarEstado('ERROR: Google Drive no respondió dentro del tiempo esperado',true);
-      registrarLog('VALIDACION','Timeout de Google Drive','El endpoint JSONP no respondió a tiempo');
+      marcarEstado('ERROR: Google Drive no respondió mediante el puente seguro',true);
+      registrarLog('VALIDACION','Timeout del puente Google Drive','Apps Script no respondió mediante postMessage');
       toast('Google Drive no respondió a tiempo.',true);
     }
   },20000);
