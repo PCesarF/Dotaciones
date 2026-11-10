@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Seguimiento de Dotación 2026 · Comfenalco Cartagena</title>
-<meta name="version" content="v41">
+<meta name="version" content="v42">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -2548,21 +2548,22 @@ function cargarPlantillaAutomatica(){
     }
   }
 
-  marcarEstado('Fuente: Google Drive · consultando información actualizada…',false);
+  const callback='cargarDrive_'+Date.now();
+  const script=document.createElement('script');
+  let terminado=false;
 
-  fetch(endpointDrive+'?t='+Date.now(),{
-    method:'GET',
-    cache:'no-store',
-    redirect:'follow',
-    mode:'cors'
-  })
-    .then(res=>{
-      if(!res.ok) throw new Error('Apps Script HTTP '+res.status);
-      return res.json();
-    })
-    .then(data=>{
+  function limpiar(){
+    if(terminado) return;
+    terminado=true;
+    try{ delete window[callback]; }catch(e){}
+    if(script.parentNode) script.parentNode.removeChild(script);
+  }
+
+  window[callback]=function(data){
+    try{
       if(!data || data.ok!==true) throw new Error((data&&data.error)||'El servicio de Drive respondió con error');
       if(!data.base64) throw new Error('La respuesta del servicio no contiene el archivo Excel');
+
       const bytes=base64ABytes(data.base64);
       const blob=new Blob([bytes],{type:data.mimeType||'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
       const file=new File([blob],nombre,{type:blob.type});
@@ -2573,15 +2574,40 @@ function cargarPlantillaAutomatica(){
         : new Date().toLocaleString('es-CO',{timeZone:'America/Bogota'});
       marcarEstado('Fuente: Google Drive · archivo actualizado '+fecha,false);
       toast('Información actualizada automáticamente desde Google Drive.');
-    })
-    .catch(err=>{
-      console.error('Error al consultar Google Drive / Apps Script',err);
+    }catch(err){
       STATE.rows=[];
       renderAll();
-      marcarEstado('ERROR: no se pudo leer Google Drive · '+String(err&&err.message||err),true);
-      registrarLog('VALIDACION','Fallo de conexión con Google Drive',String(err&&err.message||err));
-      toast('No se pudo leer Google Drive. No se muestran datos antiguos para evitar información incorrecta.',true);
-    });
+      marcarEstado('ERROR: no se pudo procesar Google Drive · '+String(err&&err.message||err),true);
+      registrarLog('VALIDACION','Fallo al procesar datos de Google Drive',String(err&&err.message||err));
+      toast('No se pudo procesar la información de Google Drive.',true);
+    }finally{
+      limpiar();
+    }
+  };
+
+  script.onerror=function(){
+    limpiar();
+    STATE.rows=[];
+    renderAll();
+    marcarEstado('ERROR: no se pudo conectar con Google Drive mediante JSONP',true);
+    registrarLog('VALIDACION','Fallo de conexión JSONP con Google Drive','No se pudo cargar el endpoint de Apps Script');
+    toast('No se pudo conectar con Google Drive.',true);
+  };
+
+  marcarEstado('Fuente: Google Drive · consultando información actualizada…',false);
+  script.src=endpointDrive+'?callback='+encodeURIComponent(callback)+'&t='+Date.now();
+  document.head.appendChild(script);
+
+  setTimeout(function(){
+    if(!terminado){
+      limpiar();
+      STATE.rows=[];
+      renderAll();
+      marcarEstado('ERROR: Google Drive no respondió dentro del tiempo esperado',true);
+      registrarLog('VALIDACION','Timeout de Google Drive','El endpoint JSONP no respondió a tiempo');
+      toast('Google Drive no respondió a tiempo.',true);
+    }
+  },20000);
 }
 
 /* Muestra el detalle de los errores de validación dentro del modal de carga */
