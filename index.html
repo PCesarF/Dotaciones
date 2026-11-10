@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Seguimiento de Dotación 2026 · Comfenalco Cartagena</title>
-<meta name="version" content="v45">
+<meta name="version" content="v46">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -702,6 +702,7 @@ footer b{color:var(--azul)}
       Corte de ejecución
       <b id="corteFecha">—</b>
       <span id="corteDatos" style="display:block;font-size:11px;color:#9fb4dd;margin-top:3px;font-weight:400"></span>
+      <button id="btnActualizarDrive" type="button" style="margin-top:7px;border:1px solid rgba(255,255,255,.28);background:rgba(255,255,255,.08);color:#fff;border-radius:8px;padding:6px 10px;font-size:10.5px;font-weight:700;cursor:pointer">↻ Actualizar datos</button>
     </div>
   </div>
 </header>
@@ -971,8 +972,12 @@ footer b{color:var(--azul)}
   <div class="modal">
     <div class="modal-h"><h3>Mensaje de notificación</h3><button class="x" data-close>×</button></div>
     <div class="modal-b">
-      <p>Genera un mensaje editable para informar a los responsables del proceso sobre su ejecución presupuestal: fecha del reporte, porcentaje de ejecución frente al presupuesto asignado y aprobado, y si se encuentran dentro de la ejecución o sobreejecutados. Puedes ajustar el texto y, si lo necesitas, adjuntar también la imagen del seguimiento del mismo proceso.</p>
+      <p id="notifIntro">Genera un mensaje editable de seguimiento presupuestal para el responsable del proceso o líder del CECO SSF. Para CECO incluye también un resumen consolidado por procesos.</p>
       <div id="notifEstado"></div>
+      <div class="fld" style="margin-top:12px">
+        <label>Para <span class="opt">(correo del responsable/líder)</span></label>
+        <input type="email" id="notifPara" placeholder="lider@empresa.com">
+      </div>
       <div class="fld" style="margin-top:12px">
         <label>Asunto</label>
         <input type="text" id="notifAsunto">
@@ -981,10 +986,10 @@ footer b{color:var(--azul)}
         <label>Mensaje <span class="opt">(editable)</span></label>
         <textarea id="notifMensaje"></textarea>
       </div>
-      <div class="note"><b>Sugerencia:</b> genera también la imagen del proceso desde el botón de abajo para adjuntarla junto con este mensaje en tu correo. Si usas "Abrir en tu correo", recuerda adjuntar la imagen manualmente, ya que el enlace de correo no permite adjuntar archivos automáticamente.</div>
+      <div class="note"><b>Sugerencia:</b> genera también la imagen del seguimiento para adjuntarla al correo. El botón "Abrir en tu correo" prepara destinatario, asunto y mensaje; la imagen debe adjuntarse manualmente.</div>
       <div class="btns-row">
         <button class="tool-btn solid" id="btnCopiarNotif"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>Copiar mensaje</button>
-        <button class="tool-btn" id="btnImagenDesdeNotif"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M4 6h16a1 1 0 011 1v10a1 1 0 01-1 1H4a1 1 0 01-1-1V7a1 1 0 011-1z"/><circle cx="8.5" cy="9.5" r="1.5"/></svg>Generar imagen del proceso</button>
+        <button class="tool-btn" id="btnImagenDesdeNotif"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M4 6h16a1 1 0 011 1v10a1 1 0 01-1 1H4a1 1 0 01-1-1V7a1 1 0 011-1z"/><circle cx="8.5" cy="9.5" r="1.5"/></svg><span id="notifImagenLabel">Generar imagen</span></button>
         <button class="tool-btn" id="btnAbrirCorreoNotif">Abrir en tu correo</button>
         <button class="tool-btn" data-close>Cerrar</button>
       </div>
@@ -1492,8 +1497,8 @@ function renderGroups(){
         ${panelResumenGrupo(g)}
         <div class="dhdr"><span>Activo / detalle</span><span class="c">Cant.</span><span class="r">Presupuesto</span><span class="r">Ejecutado</span><span class="c">% Ejec.</span><span class="c">Aprobado</span></div>
         ${detRows}
-        ${STATE.dim==='proceso' ? `<div class="gimg-bar">
-          <button class="tool-btn" onclick="abrirNotificacionProceso(${gi},event)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>Generar mensaje de notificación</button>
+        ${(STATE.dim==='proceso'||STATE.dim==='ceco') ? `<div class="gimg-bar">
+          <button class="tool-btn" onclick="abrirNotificacionGrupo(${gi},event)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>Generar mensaje de notificación</button>
           <button class="tool-btn rojo gimg-btn" onclick="generarImagenProceso(${gi},event)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M4 6h16a1 1 0 011 1v10a1 1 0 01-1 1H4a1 1 0 01-1-1V7a1 1 0 011-1z"/><circle cx="8.5" cy="9.5" r="1.5"/></svg>Generar imagen para correo</button>
         </div>` : ''}
       </div>
@@ -1596,90 +1601,123 @@ function panelResumenGrupo(g){
    editable, igual que la imagen para correo, para poder ajustarlo y enviarlo
    junto con la imagen del seguimiento. */
 let NOTIF_GI = null;
-function abrirNotificacionProceso(gi, ev){
-  if(ev){ ev.stopPropagation(); }
-  const groups = buildGroups();
-  const g = groups[gi];
-  if(!g){ toast('No se encontró el proceso.',true); return; }
-  NOTIF_GI = gi;
-  const conAsig = g.tieneAsignado;
-  const refTxt = conAsig ? 'presupuesto asignado' : 'presupuesto aprobado';
-  const fechaReporte = STATE.actualizado || selloActualizacion();
-  const sobre = g.techo>0 && g.ejecTotal > g.techo;
-  const cercaTope = !sobre && g.techo>0 && g.pctTotal>=90;
+let NOTIF_DIM = null;
 
-  // Cuadro de estado (visual, resume el mismo mensaje que va en el texto)
-  const estadoEl = document.getElementById('notifEstado');
+function resumenProcesosCeco(items){
+  const m=new Map();
+  (items||[]).forEach(r=>{
+    const k=(r.proceso||'Sin proceso').trim();
+    if(!m.has(k)) m.set(k,{proceso:k,ppto:0,ejec:0,fuera:0});
+    const x=m.get(k);
+    if(r.aprobado) x.ppto += Number(r.total)||0;
+    x.ejec += Number(r.ejecutado)||0;
+    if(!r.aprobado) x.fuera += Number(r.ejecutado)||0;
+  });
+  return [...m.values()].sort((a,b)=>b.ejec-a.ejec);
+}
+
+function abrirNotificacionGrupo(gi, ev){
+  if(ev) ev.stopPropagation();
+  const groups=buildGroups();
+  const g=groups[gi];
+  if(!g){ toast('No se encontró el grupo seleccionado.',true); return; }
+
+  NOTIF_GI=gi;
+  NOTIF_DIM=STATE.dim;
+  const esCeco=STATE.dim==='ceco';
+  const tipo=esCeco?'CECO SSF':'proceso';
+  const conAsig=g.tieneAsignado;
+  const refTxt=conAsig?'presupuesto asignado':'presupuesto aprobado';
+  const fechaReporte=STATE.actualizado||selloActualizacion();
+  const sobre=g.techo>0&&g.ejecTotal>g.techo;
+  const cercaTope=!sobre&&g.techo>0&&g.pctTotal>=90;
+
+  const intro=document.getElementById('notifIntro');
+  if(intro) intro.innerHTML=esCeco
+    ? 'Mensaje consolidado para el <b>líder del CECO SSF</b>. Incluye el resultado global del centro de costo y el detalle resumido de sus procesos.'
+    : 'Mensaje para el <b>responsable del proceso</b>, con presupuesto de referencia, ejecución, porcentaje, saldo y estado.';
+  const il=document.getElementById('notifImagenLabel');
+  if(il) il.textContent=esCeco?'Generar imagen del CECO':'Generar imagen del proceso';
+
+  const estadoEl=document.getElementById('notifEstado');
   if(estadoEl){
-    if(g.techo<=0){
-      estadoEl.innerHTML = `<div class="exp-alert exp-alert-rojo"><b>Sin presupuesto de referencia</b><br>Este proceso no tiene presupuesto aprobado ni asignado.</div>`;
-    } else if(sobre){
-      estadoEl.innerHTML = `<div class="exp-alert exp-alert-rojo"><b>⚠ Sobreejecutado · +${pctTxt(g.pctSobre)}</b><br>Supera el ${refTxt} en ${fmt(g.sobre)}.</div>`;
-    } else if(cercaTope){
-      estadoEl.innerHTML = `<div class="exp-alert exp-alert-naranja"><b>Cercano al máximo · ${pctTxt(g.pctTotal)}</b><br>Margen de ${fmt(g.saldoTecho)} sobre el ${refTxt}.</div>`;
-    } else {
-      estadoEl.innerHTML = `<div class="exp-alert exp-alert-verde"><b>Dentro de la ejecución · ${pctTxt(g.pctTotal)}</b><br>Saldo actual disponible: ${fmt(g.saldoTecho)}.</div>`;
-    }
+    if(g.techo<=0) estadoEl.innerHTML=`<div class="exp-alert exp-alert-rojo"><b>Sin presupuesto de referencia</b><br>Este ${tipo} no tiene presupuesto aprobado ni asignado.</div>`;
+    else if(sobre) estadoEl.innerHTML=`<div class="exp-alert exp-alert-rojo"><b>⚠ Sobreejecutado · +${pctTxt(g.pctSobre)}</b><br>Supera el ${refTxt} en ${fmt(g.sobre)}.</div>`;
+    else if(cercaTope) estadoEl.innerHTML=`<div class="exp-alert exp-alert-naranja"><b>Cercano al máximo · ${pctTxt(g.pctTotal)}</b><br>Margen de ${fmt(g.saldoTecho)} sobre el ${refTxt}.</div>`;
+    else estadoEl.innerHTML=`<div class="exp-alert exp-alert-verde"><b>Dentro de la ejecución · ${pctTxt(g.pctTotal)}</b><br>Saldo actual disponible: ${fmt(g.saldoTecho)}.</div>`;
   }
 
-  const asunto = `Seguimiento ejecución Dotación LMI · ${g.key.trim()} · Corte ${STATE.corteMes}`;
-
-  const lineas = [];
-  lineas.push(`Ejecución Dotación LMI - ${g.key.trim()} - ${STATE.corteMes}`);
+  const asunto=`Seguimiento ejecución Dotación LMI · ${esCeco?'CECO '+g.key.trim():g.key.trim()} · Corte ${STATE.corteMes}`;
+  const lineas=[];
+  lineas.push(`Ejecución Dotación LMI - ${esCeco?'CECO SSF '+g.key.trim():g.key.trim()} - ${STATE.corteMes}`);
   lineas.push('');
   lineas.push(saludoHoraCO()+',');
   lineas.push('');
-  lineas.push(`De acuerdo al seguimiento de dotaciones del proceso ${g.key.trim()} (${g.ceco.trim()}), remito la ejecución con corte al ${fechaReporte}.`);
+  lineas.push(esCeco
+    ? `De acuerdo con el seguimiento de dotaciones del CECO SSF ${g.key.trim()}, remito el consolidado de ejecución con corte al ${fechaReporte}.`
+    : `De acuerdo con el seguimiento de dotaciones del proceso ${g.key.trim()} (${g.ceco.trim()}), remito la ejecución con corte al ${fechaReporte}.`);
   lineas.push('');
   lineas.push(`• Presupuesto ${conAsig?'asignado':'aprobado'}: ${fmt(g.techo)}${conAsig?` (aprobado en LMI: ${fmt(g.pptoAprob)})`:''}`);
   lineas.push(`• Ejecución total (aprobada + no aprobada): ${fmt(g.ejecTotal)}`);
   lineas.push(`• Porcentaje de ejecución: ${g.techo>0?pctTxt(g.pctTotal):'sin presupuesto de referencia'}`);
-  if(g.techo<=0){
-    lineas.push(`• Estado: sin presupuesto aprobado ni asignado para este proceso. Toda la ejecución (${fmt(g.ejecNoAprob)}) corresponde a adquisiciones fuera de presupuesto.`);
-  } else if(sobre){
-    lineas.push(`• Estado: SOBREEJECUTADO. El monto ejecutado supera el ${refTxt} en ${fmt(g.sobre)} (+${pctTxt(g.pctSobre)}).`);
-  } else {
-    lineas.push(`• Estado: dentro de la ejecución. Saldo actual disponible: ${fmt(g.saldoTecho)}.`);
+  lineas.push(`• Saldo actual disponible: ${fmt(g.saldoTecho)}`);
+  if(g.techo<=0) lineas.push(`• Estado: sin presupuesto aprobado ni asignado. Toda la ejecución (${fmt(g.ejecNoAprob)}) corresponde a adquisiciones fuera de presupuesto.`);
+  else if(sobre) lineas.push(`• Estado: SOBREEJECUTADO. El monto ejecutado supera el ${refTxt} en ${fmt(g.sobre)} (+${pctTxt(g.pctSobre)}).`);
+  else lineas.push('• Estado: dentro de la ejecución presupuestal.');
+  if(g.ejecNoAprob>0) lineas.push(`• Incluye ${fmt(g.ejecNoAprob)} en adquisiciones fuera del presupuesto aprobado.`);
+
+  if(esCeco){
+    const procs=resumenProcesosCeco(g.items);
+    lineas.push('');
+    lineas.push('Resumen por proceso:');
+    procs.forEach(p=>{
+      const techoP=getAsignado('proceso',p.proceso)||p.ppto;
+      const pctP=techoP>0?p.ejec/techoP*100:null;
+      lineas.push(`• ${p.proceso}: ejecutado ${fmt(p.ejec)}${techoP>0?` de ${fmt(techoP)} (${pctTxt(pctP)})`:''}${p.fuera>0?` · fuera de presupuesto ${fmt(p.fuera)}`:''}`);
+    });
   }
-  if(g.ejecNoAprob>0){
-    lineas.push(`• Incluye ${fmt(g.ejecNoAprob)} en adquisiciones fuera del presupuesto aprobado.`);
-  }
+
   lineas.push('');
-  lineas.push('Adjunto la imagen con el detalle de ejecución del proceso para su revisión.');
+  lineas.push(esCeco?'Adjunto la imagen con el consolidado de ejecución del CECO SSF para su revisión.':'Adjunto la imagen con el detalle de ejecución del proceso para su revisión.');
   lineas.push('');
   lineas.push('Quedamos atentos a sus comentarios.');
   lineas.push('');
   lineas.push('Gracias por la atención,');
 
-  document.getElementById('notifAsunto').value = asunto;
-  document.getElementById('notifMensaje').value = lineas.join('\n');
+  document.getElementById('notifPara').value='';
+  document.getElementById('notifAsunto').value=asunto;
+  document.getElementById('notifMensaje').value=lineas.join('\n');
   openM('modalNotificacion');
 }
+
 function copiarAlPortapapeles(texto){
-  if(navigator.clipboard && navigator.clipboard.writeText){
-    return navigator.clipboard.writeText(texto);
-  }
+  if(navigator.clipboard&&navigator.clipboard.writeText) return navigator.clipboard.writeText(texto);
   const ta=document.createElement('textarea');
   ta.value=texto; ta.style.position='fixed'; ta.style.opacity='0';
   document.body.appendChild(ta); ta.focus(); ta.select();
-  try{ document.execCommand('copy'); } finally { document.body.removeChild(ta); }
+  try{document.execCommand('copy');}finally{document.body.removeChild(ta);}
   return Promise.resolve();
 }
+
 document.getElementById('btnCopiarNotif').onclick=()=>{
+  const para=document.getElementById('notifPara').value.trim();
   const asunto=document.getElementById('notifAsunto').value;
   const mensaje=document.getElementById('notifMensaje').value;
-  copiarAlPortapapeles(`${asunto}\n\n${mensaje}`)
+  copiarAlPortapapeles(`${para?'Para: '+para+'\n':''}${asunto}\n\n${mensaje}`)
     .then(()=>toast('Mensaje copiado. Puedes pegarlo en tu correo.'))
     .catch(()=>toast('No se pudo copiar automáticamente. Selecciona y copia el texto manualmente.',true));
 };
+
 document.getElementById('btnImagenDesdeNotif').onclick=()=>{
-  if(NOTIF_GI==null){ toast('No se encontró el proceso asociado.',true); return; }
-  generarImagenProceso(NOTIF_GI, null);
+  if(NOTIF_GI==null){toast('No se encontró el grupo asociado.',true);return;}
+  generarImagenProceso(NOTIF_GI,null);
 };
+
 document.getElementById('btnAbrirCorreoNotif').onclick=()=>{
+  const para=document.getElementById('notifPara').value.trim();
   const asunto=document.getElementById('notifAsunto').value;
   const mensaje=document.getElementById('notifMensaje').value;
-  const url=`mailto:?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(mensaje)}`;
+  const url=`mailto:${encodeURIComponent(para)}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(mensaje)}`;
   window.location.href=url;
 };
 
@@ -3704,6 +3742,19 @@ function descargarLog(){
 /* ====== INIT ====== */
 renderAll();
 registrarLog('CARGA','Apertura de la herramienta','Esperando lectura automática de Google Drive.', resumenEstado(STATE.rows));
+const btnActualizarDrive=document.getElementById('btnActualizarDrive');
+if(btnActualizarDrive){
+  btnActualizarDrive.onclick=()=>{
+    btnActualizarDrive.disabled=true;
+    btnActualizarDrive.textContent='↻ Actualizando…';
+    cargarPlantillaAutomatica();
+    setTimeout(()=>{
+      btnActualizarDrive.disabled=false;
+      btnActualizarDrive.textContent='↻ Actualizar datos';
+    },3000);
+  };
+}
+
 cargarPlantillaAutomatica();
 
 
