@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Seguimiento de Dotación 2026 · Comfenalco Cartagena</title>
-<meta name="version" content="v43">
+<meta name="version" content="v44">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -2532,6 +2532,7 @@ function handleFile(file, options){
 function cargarPlantillaAutomatica(){
   const nombre='Plantilla_Ejecucion_Dotacion_2026_Nva.xlsx';
   const endpointDrive='https://script.google.com/macros/s/AKfycbzevpwRXZKN0BrXiZov68gnYM_xtbUOAqgsq4sBusDc9COc9xdkerNpF9xh55nfhLy3/exec';
+  const callback='dotacionesDriveCallback';
 
   function base64ABytes(base64){
     const bin=atob(base64);
@@ -2539,6 +2540,7 @@ function cargarPlantillaAutomatica(){
     for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
     return bytes;
   }
+
   function marcarEstado(texto,esError){
     const cf=document.getElementById('corteDatos');
     if(cf){
@@ -2548,25 +2550,19 @@ function cargarPlantillaAutomatica(){
   }
 
   let terminado=false;
-  const iframe=document.createElement('iframe');
-  iframe.style.display='none';
-  iframe.setAttribute('aria-hidden','true');
+  const script=document.createElement('script');
 
   function limpiar(){
     if(terminado) return;
     terminado=true;
-    window.removeEventListener('message',onDriveMessage);
-    if(iframe.parentNode) iframe.parentNode.removeChild(iframe);
+    try{ delete window[callback]; }catch(e){ window[callback]=undefined; }
+    if(script.parentNode) script.parentNode.removeChild(script);
   }
 
-  function onDriveMessage(ev){
-    const data=ev.data;
-    if(!data || data.tipo!=='DOTACIONES_DRIVE_BRIDGE') return;
-    if(ev.origin!=='https://script.google.com' && !/\.googleusercontent\.com$/.test(new URL(ev.origin).hostname)) return;
-
+  window[callback]=function(data){
     try{
-      if(data.ok!==true) throw new Error(data.error||'El servicio de Drive respondió con error');
-      if(!data.base64) throw new Error('La respuesta no contiene el archivo Excel');
+      if(!data || data.ok!==true) throw new Error((data&&data.error)||'El servicio de Drive respondió con error');
+      if(!data.base64) throw new Error('La respuesta del servicio no contiene el archivo Excel');
 
       const bytes=base64ABytes(data.base64);
       const blob=new Blob([bytes],{type:data.mimeType||'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
@@ -2587,23 +2583,32 @@ function cargarPlantillaAutomatica(){
     }finally{
       limpiar();
     }
-  }
+  };
 
-  window.addEventListener('message',onDriveMessage);
+  script.onerror=function(){
+    limpiar();
+    STATE.rows=[];
+    renderAll();
+    marcarEstado('ERROR: no se pudo cargar el servicio de Google Drive',true);
+    registrarLog('VALIDACION','Fallo al cargar JSONP de Google Drive','El navegador no pudo cargar el endpoint Apps Script');
+    toast('No se pudo cargar el servicio de Google Drive.',true);
+  };
+
   marcarEstado('Fuente: Google Drive · consultando información actualizada…',false);
-  iframe.src=endpointDrive+'?bridge=1&t='+Date.now();
-  document.body.appendChild(iframe);
+  script.src=endpointDrive+'?callback='+callback+'&t='+Date.now();
+  script.async=true;
+  document.head.appendChild(script);
 
   setTimeout(function(){
     if(!terminado){
       limpiar();
       STATE.rows=[];
       renderAll();
-      marcarEstado('ERROR: Google Drive no respondió mediante el puente seguro',true);
-      registrarLog('VALIDACION','Timeout del puente Google Drive','Apps Script no respondió mediante postMessage');
+      marcarEstado('ERROR: Google Drive no respondió a la solicitud JSONP',true);
+      registrarLog('VALIDACION','Timeout JSONP de Google Drive','El callback fijo no respondió a tiempo');
       toast('Google Drive no respondió a tiempo.',true);
     }
-  },20000);
+  },30000);
 }
 
 /* Muestra el detalle de los errores de validación dentro del modal de carga */
