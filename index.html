@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Seguimiento de Dotación 2026 · Comfenalco Cartagena</title>
-<meta name="version" content="v46">
+<meta name="version" content="v47">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -906,7 +906,7 @@ footer b{color:var(--azul)}
       <div class="lmi-opt" id="lmiOpt">
         <span>
           <b>La columna TOTAL define el presupuesto vigente</b>
-          <small>Si la plantilla <b>incluye la columna TOTAL</b>, sus valores se toman como el presupuesto aprobado vigente de cada activo —sea el inicial o uno actualizado por decisión gerencial— y pasan a ser la referencia del seguimiento por CECO SSF, subcentro y proceso. Si la plantilla <b>no incluye esa columna</b>, se conserva el presupuesto vigente y solo se actualizan los valores ejecutados mes a mes. En ambos casos, los meses admiten ajustes por reclasificación o corrección de valores.</small>
+          <small>Si la plantilla <b>incluye la columna TOTAL</b>, sus valores se toman como el presupuesto aprobado vigente de cada activo. Las filas con CECO + PROCESO + TOTAL y DETALLE vacío se interpretan como <b>presupuesto adicional aprobado del proceso</b> —sea el inicial o uno actualizado por decisión gerencial— y pasan a ser la referencia del seguimiento por CECO SSF, subcentro y proceso. Si la plantilla <b>no incluye esa columna</b>, se conserva el presupuesto vigente y solo se actualizan los valores ejecutados mes a mes. En ambos casos, los meses admiten ajustes por reclasificación o corrección de valores.</small>
         </span>
       </div>
       <div class="drop" id="drop">
@@ -1339,7 +1339,7 @@ function buildGroups(){
   const f = STATE.navFiltro || 'todos';
   if(f==='sobre')      rows = rows.filter(r=> r.aprobado && r.total>0 && r.ejecutado>r.total);
   else if(f==='fuera') rows = rows.filter(r=> !r.aprobado && r.ejecutado>0);
-  else if(f==='sin')   rows = rows.filter(r=> r.aprobado && r.ejecutado===0 && r.total>0);
+  else if(f==='sin')   rows = rows.filter(r=> r.aprobado && !r.solo_presupuesto && r.ejecutado===0 && r.total>0);
   // Búsqueda por texto (activo, proceso, CECO o subcentro)
   const q = norm(STATE.navBusqueda||'');
   if(q){
@@ -1406,7 +1406,7 @@ function renderKpis(){
   // % de ejecución global: acumulado hasta el mes de corte sobre el techo vigente
   const ejecCorte = rows.reduce((s,r)=>s+(r.aprobado? ejecHastaCorte(r):0),0);
   const pct = pptoAprob>0? ejecCorte/pptoAprob*100:0;
-  const nAprob = rows.filter(r=>r.aprobado).length;
+  const nAprob = rows.filter(r=>r.aprobado && !r.solo_presupuesto).length;
   const nFuera = rows.filter(r=>!r.aprobado).length;
   const undPresup = rows.reduce((s,r)=>s+(r.aprobado?(r.cantidad_presup||0):0),0);
   const undFuera = rows.reduce((s,r)=>s+(!r.aprobado?(r.cantidad_adquirida||0):0),0);
@@ -1453,7 +1453,7 @@ function renderGroups(){
     // El semáforo, la barra y el porcentaje visibles reflejan la EJECUCIÓN TOTAL
     // (aprobado + no aprobado) frente al presupuesto aprobado del grupo.
     const sem = semClass(g.pctTotal, g.ejecTotal);
-    const items = g.items.slice().sort((a,b)=> (b.aprobado-a.aprobado) || (b.ejecutado-a.ejecutado));
+    const items = g.items.filter(it=>!it.solo_presupuesto).slice().sort((a,b)=> (b.aprobado-a.aprobado) || (b.ejecutado-a.ejecutado));
     const detRows = items.map(it=>{
       const s = semClass(it.pct, it.ejecutado);
       const pctCell = it.aprobado
@@ -2699,8 +2699,10 @@ function validarPlantilla(aoa, hr, col){
     if(a!=null&&String(a).trim()) ceco=String(a).trim();
     if(b!=null&&String(b).trim()) proc=String(b).trim();
     const detS = det==null?'':String(det).trim();
-    if(!detS) continue;
-    if(detS.startsWith('➤') || /adquisiciones nuevas/i.test(detS)) continue; // fila guía
+    const totalFila = col.total!=null ? (Number(r[col.total])||0) : 0;
+    const esPresupuestoAdicional = !detS && totalFila>0 && !!ceco && !!proc;
+    if(!detS && !esPresupuestoAdicional) continue;
+    if(detS && (detS.startsWith('➤') || /adquisiciones nuevas/i.test(detS))) continue; // fila guía
     if(ceco && /total general/i.test(ceco)) continue;
     filasDato++;
 
@@ -2835,8 +2837,44 @@ function parseWorkbook(wb){
     if(a!=null&&String(a).trim()) ceco=String(a).trim();
     if(b!=null&&String(b).trim()) proc=String(b).trim();
     if(sc!=null&&String(sc).trim()) sub=String(sc).trim();
-    if(det==null||!String(det).trim()) continue;
     if(ceco && /total general/i.test(ceco)) continue;
+
+    const totalAdicional = col.total!=null ? num(r[col.total]) : 0;
+    const detVacio = det==null || !String(det).trim();
+
+    // FILA DE PRESUPUESTO ADICIONAL:
+    // CECO + PROCESO + TOTAL, con DETALLE vacío.
+    // Suma al presupuesto aprobado del proceso/CECO/institucional,
+    // pero NO representa una dotación ni una adquisición.
+    if(detVacio){
+      if(actualizarLMI && totalAdicional>0 && ceco && proc){
+        const detalleReserva='Presupuesto adicional del proceso';
+        const mesesReserva={}; MESES.forEach(m=>mesesReserva[m]=0);
+        const kReserva=norm(ceco)+'|'+norm(proc)+'|'+base(detalleReserva);
+        rows.push({
+          ceco:String(ceco||'').trim(),
+          proceso:String(proc||'').trim(),
+          detalle:detalleReserva,
+          total:totalAdicional,
+          ejecutado:0,pct:0,saldo:totalAdicional,
+          cantidad_adquirida:0,meses:mesesReserva,acumulado:0,
+          aprobado:true,solo_presupuesto:true,
+          subcentro:(sub||inferirSub(ceco,proc)||'No aplica'),
+          fuente:'Presupuesto adicional aprobado LMI',
+          tipo_dotacion:null,cantidad_presup:0,
+          justificacion:'Presupuesto adicional aprobado a nivel de proceso, pendiente de distribución en activos específicos.'
+        });
+        vistosLMI.add(kReserva);
+        cambiosLMI.nuevos.push({
+          ceco:String(ceco||'').trim(),
+          proceso:String(proc||'').trim(),
+          detalle:detalleReserva,
+          ahora:totalAdicional
+        });
+      }
+      continue;
+    }
+
     if(/^➤/.test(String(det).trim()) || /adquisiciones nuevas/i.test(String(det))) continue;
 
     const meses={}; MESES.forEach(m=>meses[m]=col[m]!=null?num(r[col[m]]):0);
@@ -3069,7 +3107,7 @@ document.getElementById('btnInforme').onclick=()=>{
     ['Saldo del presupuesto vigente',pptoTotal-ejecTotalGen],
     ['% Ejecución sobre lo aprobado',p1(pptoLMIgen?ejecAprobTotal/pptoLMIgen*100:0)+'%'],
     ['% Adquisiciones fuera de ppto (vs total aprobado)',p1(pptoTotal?ejecFueraTotal/pptoTotal*100:0)+'%'],
-    ['N° dotaciones aprobadas',rows.filter(r=>r.aprobado).length],
+    ['N° dotaciones aprobadas',rows.filter(r=>r.aprobado && !r.solo_presupuesto).length],
     ['N° adquisiciones fuera de presupuesto',rows.filter(r=>!r.aprobado).length],
     [],
     ['CANTIDADES (UNIDADES)','VALOR'],
